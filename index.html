@@ -172,15 +172,11 @@
   }
   .btn-row { display: flex; gap: 10px; }
   .btn-row .btn-secondary { flex: 1; }
-  .btn-skip {
-    position: fixed; bottom: 24px; right: 20px;
-    background: var(--surface); color: var(--text);
-    border: 2px solid var(--border); border-radius: 16px;
-    padding: 16px 24px; font-size: 17px; font-weight: 700;
-    cursor: pointer; z-index: 100;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  .btn-skip-top {
+    background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px 14px; font-size: 15px; font-weight: 700;
+    cursor: pointer; line-height: 1;
   }
-  .btn-skip:active { opacity: 0.7; }
 
   .auto-hint {
     font-size: 13px; color: var(--muted); text-align: center; line-height: 1.5;
@@ -220,22 +216,92 @@
     <div class="header-btns">
       <button class="btn-mute" id="muteBtn" onclick="toggleMute()" title="Elhalkítás">🔊</button>
       <button class="btn-repeat-top" onclick="repeatStep()" title="Újra">↺ Újra</button>
+      <button class="btn-skip-top" onclick="skipStep()">Kihagyás →</button>
       <button class="btn-pause" id="pauseBtn" onclick="togglePause()" title="Szünet">⏸ Szünet</button>
       <a href="tel:104" class="btn-call">📞 104</a>
     </div>
   </div>
   <div class="guide-main" id="guideMain"></div>
   <div class="guide-actions" id="guideActions"></div>
-  <button class="btn-skip" id="skipBtn" onclick="skipStep()">Kihagyás →</button>
 </div>
 
 <script>
 // ════════════════════════════════════════════════
-// SPEECH (Text to Speech)
+// SPEECH – MP3 fájlok, fallback: Web Speech API
 // ════════════════════════════════════════════════
 let muted = false;
 let paused = false;
 let huVoice = null;
+let currentAudio = null;
+
+// MP3 kulcs → fájlnév mapping
+const AUDIO_MAP = {
+  'Nem szabad megrázni a babát! ... Szólítsd meg hangosan. ... Nyomogasd a vállát. ... Csipd meg a talpát. ... Ha nem reagál, nyomd meg a gombot.': 's1_check',
+  'Fektesd a babát hanyatt ... egy kemény felületre. ... Hívd a száznégyet, ... és tedd hangosbeszélőre. ... Aztán nyomd meg a tovább gombot.': 's2_position',
+  'Hajolj a baba fölé. ... Tedd közel a füled az orrához. ... Hallgasd, hogy lélegzik-e. ... Nézd, hogy emelkedik-e a mellkasa. ... Érzed-e az arcodon a légzését.': 's3_listen',
+  'Ha nem lélegzik, folytasd.': 's3_result',
+  'Nézz bele a baba szájába. ... Ha látsz idegen testet, ... töröld ki egy ujjal, ruhával. ... Ne papírzsebkendőt használj, ... mert az szakad és málik. ... Ha nem látsz semmit, ne nyúlj bele.': 's4_mouth',
+  'Vetkőztesd le a baba felsőtestét. ... Tedd szabaddá a mellkasát.': 's4b_undress',
+  'Most öt befúvás következik. ... Hajtsd a fejét enyhén hátra. ... Kapd be a baba száját és orrát a száddal egyszerre. ... Fújj be hosszan. ... Figyeld, emelkedik a mellkasa?': 's5_breaths',
+  'A két hüvelykujjadat tedd a mellbimbókat összekötő vonal alá, középre. ... A baba hátát fogd négy-négy ujjaddal. ... Nyomd erősen, ... préselődnie kell a vérnek. ... Figyeld a ritmust: ... másodpercenként kétszer nyomj.': 's6_compress',
+  'Kezdődik az ismétlés. 2 befúvás.': 'loop_breath_1',
+  '2 befúvás.': 'loop_breath_n',
+  '2 befúvás. Ha elfáradsz, cseréljetek.': 'loop_breath_swap',
+  '2 befúvás. Kitartás, a mentők úton vannak.': 'loop_breath_mentok',
+  '2 befúvás. Szájon és orron egyszerre.': 'loop_breath_technika',
+  'Ismét 30 mellkaskompresszió.': 'loop_compress',
+  'Erősen préselj.': 'loop_erot',
+};
+
+const NUM_MAP = {
+  'Öt.': 'n5', 'Tíz.': 'n10', 'Tizenöt.': 'n15',
+  'Húsz.': 'n20', 'Huszonöt.': 'n25', 'Harminc.': 'n30',
+  '5': 'n5', '10': 'n10', '15': 'n15',
+  '20': 'n20', '25': 'n25', '30': 'n30',
+};
+
+function playMp3(key, cb) {
+  if (muted || paused) { if (cb) cb(); return; }
+  if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+  const audio = new Audio('audio/' + key + '.mp3');
+  currentAudio = audio;
+  audio.onended = () => { currentAudio = null; if (cb) cb(); };
+  audio.onerror = () => { currentAudio = null; if (cb) cb(); };
+  audio.play().catch(() => { if (cb) cb(); });
+}
+
+function speak(text, rate, cb) {
+  if (muted || paused) { if (cb) cb(); return; }
+  const clean = text.replace(/ \.\.\. /g, ' ').replace(/\.\.\./g, '').trim();
+  const key = AUDIO_MAP[text];
+  if (key) { playMp3(key, cb); return; }
+  // Fallback: Web Speech API
+  if (!window.speechSynthesis) { if (cb) cb(); return; }
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(clean);
+    u.lang = 'hu-HU';
+    if (huVoice) u.voice = huVoice;
+    u.rate = rate || 1.0;
+    if (cb) u.onend = cb;
+    speechSynthesis.speak(u);
+  } catch(e) { if (cb) cb(); }
+}
+
+function speakNum(text) {
+  if (muted || paused) return;
+  const key = NUM_MAP[text];
+  if (key) { playMp3(key); return; }
+  // Fallback
+  if (!window.speechSynthesis) return;
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'hu-HU';
+    if (huVoice) u.voice = huVoice;
+    u.rate = 1.2;
+    speechSynthesis.speak(u);
+  } catch(e) {}
+}
 
 function loadVoice() {
   const voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
@@ -246,44 +312,21 @@ if (window.speechSynthesis) {
   speechSynthesis.onvoiceschanged = loadVoice;
 }
 
-function speak(text, rate, cb) {
-  if (muted || paused || !window.speechSynthesis) { if (cb) cb(); return; }
-  try {
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'hu-HU';
-    if (huVoice) u.voice = huVoice;
-    u.rate = rate || 1.0;
-    u.pitch = 1.0;
-    if (cb) u.onend = cb;
-    speechSynthesis.speak(u);
-  } catch(e) { if (cb) cb(); }
-}
-
-// Quick speak that does NOT cancel ongoing (for counting numbers over beats)
-function speakNum(text) {
-  if (muted || paused || !window.speechSynthesis) return;
-  try {
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'hu-HU';
-    if (huVoice) u.voice = huVoice;
-    u.rate = 1.2; u.pitch = 1.0;
-    speechSynthesis.speak(u);
-  } catch(e) {}
-}
-
 function toggleMute() {
   muted = !muted;
   document.getElementById('muteBtn').textContent = muted ? '🔇' : '🔊';
-  if (muted && window.speechSynthesis) speechSynthesis.cancel();
+  if (muted) {
+    if (window.speechSynthesis) speechSynthesis.cancel();
+    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+  }
 }
 
 function togglePause() {
   paused = !paused;
   const btn = document.getElementById('pauseBtn');
   if (paused) {
-    // Pause everything
     if (window.speechSynthesis) speechSynthesis.cancel();
+    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
     breathCueRunning = false;
     activeTimers.forEach(t => { clearTimeout(t); clearInterval(t); });
     activeTimers = [];
