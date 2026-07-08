@@ -242,7 +242,8 @@ const AUDIO_KEYS = [
   's4b_undress','s5_breaths','s6_compress',
   'loop_breath_1','loop_breath_n','loop_breath_swap',
   'loop_breath_mentok','loop_breath_technika',
-  'loop_compress','loop_erot'
+  'loop_compress','loop_erot',
+  'n5','n10','n15','n20','n25','n30'
 ];
 
 function preloadAudio() {
@@ -323,8 +324,34 @@ function speakTTS(text, rate, cb) {
   } catch(e) { if (cb) cb(); }
 }
 
+// Számok: 5,10,15,20,25,30 → MP3, egyéb → TTS
+const NUM_TO_KEY = {
+  '5': 'n5', '10': 'n10', '15': 'n15',
+  '20': 'n20', '25': 'n25', '30': 'n30'
+};
+
+let numAudio = null;
+
 function speakNum(text) {
-  if (muted || paused || !window.speechSynthesis) return;
+  if (muted || paused) return;
+  const key = NUM_TO_KEY[text];
+  if (key) {
+    // Külön audio csatorna a számoknak, hogy ne törölje a fő narrációt
+    try {
+      if (numAudio) { try { numAudio.pause(); } catch(e){} }
+      numAudio = new Audio('audio/' + key + '.mp3');
+      const p = numAudio.play();
+      if (p && typeof p.then === 'function') {
+        p.catch(() => speakNumTTS(text));
+      }
+    } catch(e) { speakNumTTS(text); }
+    return;
+  }
+  speakNumTTS(text);
+}
+
+function speakNumTTS(text) {
+  if (!window.speechSynthesis) return;
   try {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'hu-HU';
@@ -682,7 +709,6 @@ function runBreaths(total, done) {
     if (cnt) cnt.textContent = count;
     playBlow();
     vibrate(800);
-    speakNum('Fújj');
     // blow lasts ~1s, pause ~1.2s
     later(() => { if (ring) ring.classList.remove('blow'); }, 1000);
     later(oneBreath, 2200);
