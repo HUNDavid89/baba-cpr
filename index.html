@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#C0392B">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Baba CPR">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Csecsemő újraélesztés</title>
+<style>
+  :root {
+    --red: #C0392B; --red-light: #E74C3C; --amber: #E67E22;
+    --green: #27AE60; --bg: #0D0D0D; --surface: #1A1A1A;
+    --surface2: #252525; --text: #F0F0F0; --muted: #888; --border: #333;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden;
+  }
+
+  /* START */
+  #startScreen {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; min-height: 100vh; padding: 32px 24px; text-align: center; gap: 24px;
+  }
+  .emergency-badge {
+    background: var(--red); color: white; font-size: 11px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase; padding: 6px 16px; border-radius: 20px;
+  }
+  #startScreen h1 { font-size: 28px; font-weight: 800; line-height: 1.2; color: white; }
+  #startScreen h1 span { color: var(--red-light); }
+  #startScreen p { color: var(--muted); font-size: 15px; line-height: 1.6; max-width: 340px; }
+  .btn-start {
+    background: var(--red); color: white; font-size: 22px; font-weight: 800;
+    border: none; border-radius: 16px; padding: 22px 48px; cursor: pointer;
+    width: 100%; max-width: 360px; box-shadow: 0 8px 32px rgba(192,57,43,0.5);
+    animation: pulse-btn 2s infinite; transition: transform 0.1s;
+  }
+  .btn-start:active { transform: scale(0.97); }
+  @keyframes pulse-btn {
+    0%,100% { box-shadow: 0 8px 32px rgba(192,57,43,0.5); }
+    50% { box-shadow: 0 8px 48px rgba(192,57,43,0.9); }
+  }
+  .call-hint {
+    display: flex; align-items: center; gap: 10px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 12px; padding: 14px 20px; max-width: 360px; width: 100%;
+  }
+  .call-hint a { color: var(--amber); font-size: 20px; font-weight: 800; text-decoration: none; }
+  .call-hint p { color: var(--muted); font-size: 13px; text-align: left; }
+  .audio-note {
+    font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px;
+  }
+
+  /* GUIDE SCREEN */
+  #guideScreen { display: none; flex-direction: column; min-height: 100vh; }
+  .progress-bar { height: 4px; background: var(--border); }
+  .progress-fill { height: 100%; background: var(--red); transition: width 0.4s ease; }
+
+  .guide-header {
+    padding: 14px 20px; display: flex; align-items: center;
+    justify-content: space-between; border-bottom: 1px solid var(--border);
+  }
+  .guide-step-num { font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: 1px; }
+  .header-btns { display: flex; gap: 8px; align-items: center; }
+  .btn-mute {
+    background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 20px; padding: 8px 12px; font-size: 16px; cursor: pointer;
+  }
+  .btn-call {
+    background: var(--amber); color: white; font-size: 13px; font-weight: 700;
+    border: none; border-radius: 20px; padding: 8px 14px; cursor: pointer;
+    text-decoration: none; display: flex; align-items: center; gap: 6px;
+  }
+
+  .guide-main {
+    flex: 1; padding: 28px 24px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 24px; text-align: center;
+  }
+
+  .big-emoji { font-size: 96px; }
+  .big-emoji.cpr { animation: cpr-bounce 0.5s ease-in-out infinite; }
+  @keyframes cpr-bounce {
+    0%,100% { transform: translateY(0) scale(1); }
+    40% { transform: translateY(-10px) scale(1.06); }
+    60% { transform: translateY(5px) scale(0.96); }
+  }
+  .big-emoji.breath { animation: breath-pulse 2s ease-in-out infinite; }
+  @keyframes breath-pulse {
+    0%,100% { transform: scale(1); opacity: 0.75; }
+    50% { transform: scale(1.18); opacity: 1; }
+  }
+  .big-emoji.check { animation: shake 3s ease-in-out infinite; }
+  @keyframes shake {
+    0%,80%,100% { transform: rotate(0); }
+    10% { transform: rotate(-6deg); } 20% { transform: rotate(6deg); }
+    30% { transform: rotate(-4deg); } 40% { transform: rotate(4deg); }
+  }
+
+  .guide-title { font-size: 26px; font-weight: 800; line-height: 1.25; color: white; }
+  .guide-text { font-size: 17px; line-height: 1.6; color: #CCC; max-width: 360px; }
+  .guide-text strong { color: white; }
+  .guide-text .hl { color: var(--red-light); font-weight: 700; }
+
+  /* Big count display (hands-free) */
+  .live-count {
+    font-size: 120px; font-weight: 900; color: white;
+    font-variant-numeric: tabular-nums; line-height: 1; letter-spacing: -4px;
+  }
+  .live-count.flash { animation: countflash 0.25s; }
+  @keyframes countflash {
+    0% { color: var(--red-light); transform: scale(1.15); }
+    100% { color: white; transform: scale(1); }
+  }
+  .live-sub { font-size: 18px; color: var(--muted); font-weight: 600; letter-spacing: 1px; }
+
+  /* Beat ring */
+  .beat-ring {
+    width: 200px; height: 200px; border-radius: 50%;
+    border: 5px solid var(--border); display: flex; align-items: center;
+    justify-content: center; flex-direction: column; gap: 4px;
+    transition: border-color 0.05s, box-shadow 0.05s, transform 0.05s;
+  }
+  .beat-ring.pulse {
+    border-color: var(--red-light);
+    box-shadow: 0 0 40px rgba(192,57,43,0.6);
+    transform: scale(1.04);
+  }
+  .beat-ring.breath-ring.blow {
+    border-color: var(--green);
+    box-shadow: 0 0 40px rgba(39,174,96,0.5);
+    transform: scale(1.08);
+  }
+
+  /* Countdown for "watch/listen" */
+  .countdown-num {
+    font-size: 110px; font-weight: 900; color: var(--red-light);
+    font-variant-numeric: tabular-nums; line-height: 1;
+  }
+
+  .guide-actions { padding: 16px 20px 36px; display: flex; flex-direction: column; gap: 10px; }
+  .btn-primary {
+    background: var(--red); color: white; border: none; border-radius: 16px;
+    padding: 22px 0; font-size: 20px; font-weight: 800; cursor: pointer; width: 100%;
+    box-shadow: 0 4px 20px rgba(192,57,43,0.4); transition: transform 0.1s;
+  }
+  .btn-primary:active { transform: scale(0.98); }
+  .btn-primary.green { background: var(--green); box-shadow: 0 4px 20px rgba(39,174,96,0.4); }
+  .btn-secondary {
+    background: var(--surface); color: var(--text); border: 1px solid var(--border);
+    border-radius: 14px; padding: 14px 0; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%;
+  }
+  .btn-row { display: flex; gap: 10px; }
+  .btn-row .btn-secondary { flex: 1; }
+
+  .auto-hint {
+    font-size: 13px; color: var(--muted); text-align: center; line-height: 1.5;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+
+  .repeat-banner {
+    background: rgba(192,57,43,0.12); border: 1px solid var(--red);
+    border-radius: 12px; padding: 10px 16px; font-size: 14px; color: #EEE;
+    text-align: center; line-height: 1.5; max-width: 360px;
+  }
+</style>
+</head>
+<body>
+
+<!-- START -->
+<div id="startScreen">
+  <div class="emergency-badge">Vészhelyzet protokoll</div>
+  <h1>A baba nem<br><span>lélegzik?</span></h1>
+  <p>Tedd magad mellé a telefont. Az app <strong>felolvassa</strong> mit kell tenned, és <strong>hangosan számol</strong> az ütemmel. Te a babával foglalkozz.</p>
+  <button class="btn-start" onclick="startApp()">▶ INDÍTÁS – HANGOS VEZETÉS</button>
+  <div class="call-hint">
+    <div style="font-size:28px;">📞</div>
+    <div>
+      <a href="tel:104">MENTŐK: 104</a>
+      <p>Hívd amint tudod</p>
+    </div>
+  </div>
+  <div class="audio-note">🔊 Kapcsold fel a hangerőt!</div>
+</div>
+
+<!-- GUIDE -->
+<div id="guideScreen">
+  <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="guide-header">
+    <div class="guide-step-num" id="stepNum">1 / 7</div>
+    <div class="header-btns">
+      <button class="btn-mute" id="muteBtn" onclick="toggleMute()">🔊</button>
+      <a href="tel:104" class="btn-call">📞 104</a>
+    </div>
+  </div>
+  <div class="guide-main" id="guideMain"></div>
+  <div class="guide-actions" id="guideActions"></div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════
+// SPEECH (Text to Speech)
+// ════════════════════════════════════════════════
+let muted = false;
+let huVoice = null;
+
+function loadVoice() {
+  const voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+  huVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('hu')) || null;
+}
+if (window.speechSynthesis) {
+  loadVoice();
+  speechSynthesis.onvoiceschanged = loadVoice;
+}
+
+function speak(text, rate, cb) {
+  if (muted || !window.speechSynthesis) { if (cb) cb(); return; }
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'hu-HU';
+    if (huVoice) u.voice = huVoice;
+    u.rate = rate || 1.0;
+    u.pitch = 1.0;
+    if (cb) u.onend = cb;
+    speechSynthesis.speak(u);
+  } catch(e) { if (cb) cb(); }
+}
+
+// Quick speak that does NOT cancel ongoing (for counting numbers over beats)
+function speakNum(text) {
+  if (muted || !window.speechSynthesis) return;
+  try {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = 'hu-HU';
+    if (huVoice) u.voice = huVoice;
+    u.rate = 1.2; u.pitch = 1.0;
+    speechSynthesis.speak(u);
+  } catch(e) {}
+}
+
+function toggleMute() {
+  muted = !muted;
+  document.getElementById('muteBtn').textContent = muted ? '🔇' : '🔊';
+  if (muted && window.speechSynthesis) speechSynthesis.cancel();
+}
+
+// ════════════════════════════════════════════════
+// AUDIO + VIBRATION
+// ════════════════════════════════════════════════
+let audioCtx = null;
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+function playClick() {
+  if (muted) return;
+  try {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator(); const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(900, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(500, ctx.currentTime + 0.04);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.07);
+  } catch(e) {}
+}
+function vibrate(ms) { if (navigator.vibrate) navigator.vibrate(ms); }
+
+// ════════════════════════════════════════════════
+// FLOW DEFINITION
+// Each step: spoken intro, visual, how it advances.
+// ════════════════════════════════════════════════
+let currentStep = 0;
+let activeTimers = [];
+
+function clearTimers() {
+  activeTimers.forEach(t => { clearTimeout(t); clearInterval(t); });
+  activeTimers = [];
+  if (window.speechSynthesis) speechSynthesis.cancel();
+}
+function later(fn, ms) { const t = setTimeout(fn, ms); activeTimers.push(t); return t; }
+
+const TOTAL_STEPS = 7;
+
+function startApp() {
+  getAudioCtx(); // unlock audio
+  speak(' '); // unlock speech on iOS
+  document.getElementById('startScreen').style.display = 'none';
+  document.getElementById('guideScreen').style.display = 'flex';
+  currentStep = 0;
+  renderStep();
+}
+
+function setProgress(n) {
+  document.getElementById('progressFill').style.width = (n / TOTAL_STEPS * 100) + '%';
+  document.getElementById('stepNum').textContent = n + ' / ' + TOTAL_STEPS;
+}
+
+// ════════════════════════════════════════════════
+// STEP RENDERING
+// ════════════════════════════════════════════════
+function renderStep() {
+  clearTimers();
+  const main = document.getElementById('guideMain');
+  const actions = document.getElementById('guideActions');
+
+  switch (currentStep) {
+
+    // ── 1. CHECK RESPONSE ──
+    case 0:
+      setProgress(1);
+      main.innerHTML = `
+        <div class="big-emoji check">👁️</div>
+        <div class="guide-title">Reagál a baba?</div>
+        <div class="guide-text">Szólítsd meg <strong>hangosan</strong> és <strong>csipd meg a talpát</strong>. <span class="hl">Ne rázd meg!</span></div>`;
+      actions.innerHTML = `
+        <button class="btn-primary" onclick="nextStep()">Nem reagál →</button>
+        <div class="auto-hint">Ha reagál és lélegzik, fordítsd az oldalára</div>`;
+      speak('Reagál a baba? Szólítsd meg hangosan, és csipd meg a talpát. Ne rázd meg. Ha nem reagál, nyomd meg a gombot.', 1.0);
+      break;
+
+    // ── 2. POSITION + CALL ──
+    case 1:
+      setProgress(2);
+      main.innerHTML = `
+        <div class="big-emoji">📍</div>
+        <div class="guide-title">Fektesd kemény<br>felületre + hívd a mentőt</div>
+        <div class="guide-text">Tedd a babát <strong>hanyatt</strong> a padlóra vagy asztalra. <strong>Hívd a 1‑0‑4‑et</strong> most – tedd hangosbeszélőre!</div>`;
+      actions.innerHTML = `
+        <a href="tel:104" class="btn-primary" style="text-decoration:none;display:block;text-align:center">📞 MENTŐK HÍVÁSA – 104</a>
+        <button class="btn-secondary" onclick="nextStep()">Kész, tovább →</button>`;
+      speak('Fektesd a babát hanyatt egy kemény felületre. Hívd a száznégyet, és tedd hangosbeszélőre. Aztán nyomd meg a tovább gombot.', 1.0);
+      break;
+
+    // ── 3. LOOK / LISTEN 10s ──
+    case 2:
+      setProgress(3);
+      main.innerHTML = `
+        <div class="big-emoji check">👂</div>
+        <div class="guide-title">Nézd és hallgasd<br>10 másodpercig</div>
+        <div class="countdown-num" id="cd">10</div>
+        <div class="guide-text">Mozog a mellkas? Hallasz légzést? Érzed a levegőt az arcán?</div>`;
+      actions.innerHTML = `<div class="auto-hint">⏳ Automatikusan tovább 10 mp múlva…</div>`;
+      speak('Hajolj a baba fölé. Nézd a mellkasát, hallgasd a légzését tíz másodpercig. Számolok.', 1.0, () => {
+        runCountdown(10, 'cd', () => {
+          speak('Ha nem lélegzik, folytasd.', 1.0, () => later(nextStep, 600));
+        });
+      });
+      // Fallback: if speech disabled, run countdown anyway
+      if (muted || !window.speechSynthesis) later(() => runCountdown(10, 'cd', () => later(nextStep, 600)), 500);
+      break;
+
+    // ── 4. CHECK MOUTH ──
+    case 3:
+      setProgress(4);
+      main.innerHTML = `
+        <div class="big-emoji check">👄</div>
+        <div class="guide-title">Nézz a szájba</div>
+        <div class="guide-text">Ha <strong>látsz idegen testet</strong>, töröld ki egy ujjal, <strong>ruhával</strong> – <span class="hl">ne papírzsebkendővel!</span> Ha nem látsz semmit, ne nyúlj bele.</div>`;
+      actions.innerHTML = `<button class="btn-primary" onclick="nextStep()">Szabad a légút →</button>`;
+      speak('Nézz bele a baba szájába. Ha látsz idegen testet, töröld ki egy ujjal, ruhával. Ne papírzsebkendőt használj. Ha nem látsz semmit, ne nyúlj bele. Aztán nyomd meg a gombot.', 1.0);
+      break;
+
+    // ── 5. INITIAL 5 BREATHS ──
+    case 4:
+      setProgress(5);
+      main.innerHTML = `
+        <div class="beat-ring breath-ring" id="breathRing">
+          <div class="live-count" id="breathCount" style="font-size:90px">0</div>
+          <div class="live-sub">/ 5 befúvás</div>
+        </div>
+        <div class="guide-title" style="font-size:22px">5 kezdő befúvás</div>
+        <div class="guide-text">Fedd le a <strong>száját és orrát</strong> egyszerre. Fújj be, amíg a mellkas <strong>megemelkedik</strong>.</div>`;
+      actions.innerHTML = `<div class="auto-hint">🫁 Kövesd a hangot – fújj a jelzésre</div>`;
+      speak('Most öt befúvás következik. Tedd a fej enyhén hátra. Fedd le a baba száját és orrát a száddal. Fújj be, amikor mondom.', 1.0, () => {
+        runBreaths(5, () => {
+          speak('Most jön a mellkaskompresszió.', 1.0, () => later(nextStep, 700));
+        });
+      });
+      if (muted || !window.speechSynthesis) later(() => runBreaths(5, () => later(nextStep, 700)), 500);
+      break;
+
+    // ── 6. FIRST 30 COMPRESSIONS ──
+    case 5:
+      setProgress(6);
+      main.innerHTML = `
+        <div class="beat-ring" id="beatRing">
+          <div class="live-count" id="compCount">0</div>
+          <div class="live-sub">/ 30</div>
+        </div>
+        <div class="guide-title" style="font-size:22px">30 mellkaskompresszió</div>
+        <div class="guide-text"><strong>2 hüvelykujj</strong> a mellbimbók vonala alatt, a hátat 4‑4 ujjal tartva. Nyomd <strong>120-as ütemre</strong>.</div>`;
+      actions.innerHTML = `<div class="auto-hint">🤲 Nyomd a kattanás ütemére</div>`;
+      speak('Tedd a két hüvelykujjad a mellbimbókat összekötő vonal alá. Nyomd a mellkast az ütemre. Számolok.', 1.0, () => {
+        runCompressions(30, () => later(nextStep, 400));
+      });
+      if (muted || !window.speechSynthesis) later(() => runCompressions(30, () => later(nextStep, 400)), 500);
+      break;
+
+    // ── 7. CONTINUOUS LOOP: 2 breaths + 30 compressions ──
+    case 6:
+      setProgress(7);
+      runLoopCycle();
+      break;
+  }
+}
+
+function nextStep() {
+  clearTimers();
+  if (currentStep < TOTAL_STEPS - 1) { currentStep++; renderStep(); }
+}
+
+function prevStep() {
+  clearTimers();
+  if (currentStep > 0) { currentStep--; renderStep(); }
+}
+
+// ════════════════════════════════════════════════
+// COUNTDOWN (look/listen)
+// ════════════════════════════════════════════════
+function runCountdown(from, elId, done) {
+  let n = from;
+  const el = document.getElementById(elId);
+  if (el) el.textContent = n;
+  const iv = setInterval(() => {
+    n--;
+    const e = document.getElementById(elId);
+    if (e) e.textContent = n > 0 ? n : '✓';
+    if (n <= 3 && n > 0) { playClick(); }
+    if (n <= 0) { clearInterval(iv); if (done) done(); }
+  }, 1000);
+  activeTimers.push(iv);
+}
+
+// ════════════════════════════════════════════════
+// BREATHS (timed, with voice cue + blow sound)
+// ════════════════════════════════════════════════
+function runBreaths(total, done) {
+  let count = 0;
+  function oneBreath() {
+    if (count >= total) { if (done) done(); return; }
+    count++;
+    const ring = document.getElementById('breathRing');
+    const cnt = document.getElementById('breathCount');
+    if (ring) ring.classList.add('blow');
+    if (cnt) cnt.textContent = count;
+    playBlow();
+    vibrate(800);
+    speakNum('Fújj');
+    // blow lasts ~1s, pause ~1.2s
+    later(() => { if (ring) ring.classList.remove('blow'); }, 1000);
+    later(oneBreath, 2200);
+  }
+  oneBreath();
+}
+
+function playBlow() {
+  if (muted) return;
+  try {
+    const ctx = getAudioCtx();
+    const bufSize = ctx.sampleRate * 1.0;
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 850; bp.Q.value = 0.5;
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.35, ctx.currentTime + 0.15);
+    gain.gain.setValueAtTime(0.35, ctx.currentTime + 0.7);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 1.0);
+    src.connect(bp); bp.connect(gain); gain.connect(ctx.destination);
+    src.start(ctx.currentTime); src.stop(ctx.currentTime + 1.0);
+  } catch(e) {}
+}
+
+// ════════════════════════════════════════════════
+// COMPRESSIONS (120 BPM auto, counts aloud)
+// ════════════════════════════════════════════════
+function runCompressions(total, done) {
+  let count = 0;
+  const ring = document.getElementById('beatRing');
+  const cnt = document.getElementById('compCount');
+  const iv = setInterval(() => {
+    count++;
+    if (cnt) { cnt.textContent = count; cnt.classList.remove('flash'); void cnt.offsetWidth; cnt.classList.add('flash'); }
+    if (ring) { ring.classList.add('pulse'); setTimeout(() => ring && ring.classList.remove('pulse'), 120); }
+    playClick();
+    vibrate(50);
+    // Speak count every 5 to avoid overlap, or final
+    if (count % 5 === 0 || count === total) speakNum(String(count));
+    if (count >= total) { clearInterval(iv); if (done) done(); }
+  }, 500); // 120 BPM
+  activeTimers.push(iv);
+}
+
+// ════════════════════════════════════════════════
+// CONTINUOUS LOOP
+// ════════════════════════════════════════════════
+let loopCycleNum = 0;
+
+function runLoopCycle() {
+  loopCycleNum++;
+  const main = document.getElementById('guideMain');
+  const actions = document.getElementById('guideActions');
+
+  // Phase A: 2 breaths
+  main.innerHTML = `
+    <div class="repeat-banner">🔁 ${loopCycleNum}. ciklus · folytasd amíg a mentő megérkezik</div>
+    <div class="beat-ring breath-ring" id="breathRing">
+      <div class="live-count" id="breathCount" style="font-size:90px">0</div>
+      <div class="live-sub">/ 2 befúvás</div>
+    </div>
+    <div class="guide-title" style="font-size:22px">2 befúvás</div>
+    <div class="guide-text">Fedd le a száját és orrát, fújj be amíg a mellkas emelkedik.</div>`;
+  actions.innerHTML = `
+    <div class="auto-hint">🔊 Az app vezet · tartsd nyitva az ajtót!</div>
+    <button class="btn-secondary" onclick="skipToCompressions()">Ugrás a kompresszióhoz →</button>`;
+
+  speak(loopCycleNum === 1 ? 'Kezdődik az ismétlés. Két befúvás.' : 'Két befúvás.', 1.0, () => {
+    runBreaths(2, () => {
+      loopCompressionsPhase();
+    });
+  });
+  if (muted || !window.speechSynthesis) later(() => runBreaths(2, loopCompressionsPhase), 500);
+}
+
+function skipToCompressions() {
+  clearTimers();
+  loopCompressionsPhase();
+}
+
+function loopCompressionsPhase() {
+  clearTimers();
+  const main = document.getElementById('guideMain');
+  const actions = document.getElementById('guideActions');
+
+  main.innerHTML = `
+    <div class="repeat-banner">🔁 ${loopCycleNum}. ciklus · folytasd amíg a mentő megérkezik</div>
+    <div class="beat-ring" id="beatRing">
+      <div class="live-count" id="compCount">0</div>
+      <div class="live-sub">/ 30</div>
+    </div>
+    <div class="guide-title" style="font-size:22px">30 mellkaskompresszió</div>
+    <div class="guide-text">2 hüvelykujj, 120-as ütem. Nyomd a kattanásra.</div>`;
+  actions.innerHTML = `
+    <div class="auto-hint">🤲 Az app számol · ne állj meg!</div>`;
+
+  speak('Harminc nyomás.', 1.0, () => {
+    runCompressions(30, () => {
+      speak('Most két befúvás.', 1.0, () => later(runLoopCycle, 500));
+    });
+  });
+  if (muted || !window.speechSynthesis) later(() => runCompressions(30, () => later(runLoopCycle, 500)), 500);
+}
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(r => console.log('SW registered'))
+      .catch(e => console.log('SW error', e));
+  });
+}
+</script>
+</body>
+</html>
