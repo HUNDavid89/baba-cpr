@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Baba CPR">
 <link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <title>Csecsemő újraélesztés</title>
 <style>
   :root {
@@ -62,19 +62,35 @@
   .progress-fill { height: 100%; background: var(--red); transition: width 0.4s ease; }
 
   .guide-header {
-    padding: 14px 20px; display: flex; align-items: center;
+    padding: 16px; display: flex; align-items: center;
     justify-content: space-between; border-bottom: 1px solid var(--border);
+    gap: 8px;
   }
-  .guide-step-num { font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: 1px; }
+  .guide-step-num { font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: 1px; flex-shrink: 0; }
   .header-btns { display: flex; gap: 8px; align-items: center; }
   .btn-mute {
     background: var(--surface2); color: var(--text); border: 1px solid var(--border);
-    border-radius: 20px; padding: 8px 12px; font-size: 16px; cursor: pointer;
+    border-radius: 14px; padding: 16px 18px; font-size: 28px; cursor: pointer;
+    line-height: 1;
+  }
+  .btn-pause {
+    background: var(--amber); color: white; border: none;
+    border-radius: 14px; padding: 16px 18px; font-size: 18px; font-weight: 800; cursor: pointer;
+    display: flex; align-items: center; gap: 6px; line-height: 1;
+  }
+  .btn-pause.paused {
+    background: var(--green);
+    animation: pulse-btn 1.5s infinite;
+  }
+  .btn-repeat-top {
+    background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px 18px; font-size: 22px; cursor: pointer;
+    line-height: 1;
   }
   .btn-call {
-    background: var(--amber); color: white; font-size: 13px; font-weight: 700;
-    border: none; border-radius: 20px; padding: 8px 14px; cursor: pointer;
-    text-decoration: none; display: flex; align-items: center; gap: 6px;
+    background: var(--red); color: white; font-size: 20px; font-weight: 800;
+    border: none; border-radius: 14px; padding: 16px 20px; cursor: pointer;
+    text-decoration: none; display: flex; align-items: center; gap: 6px; line-height: 1;
   }
 
   .guide-main {
@@ -142,7 +158,7 @@
     font-variant-numeric: tabular-nums; line-height: 1;
   }
 
-  .guide-actions { padding: 16px 20px 36px; display: flex; flex-direction: column; gap: 10px; }
+  .guide-actions { padding: 16px 20px 36px; display: flex; flex-direction: column; gap: 10px; position: relative; }
   .btn-primary {
     background: var(--red); color: white; border: none; border-radius: 16px;
     padding: 22px 0; font-size: 20px; font-weight: 800; cursor: pointer; width: 100%;
@@ -156,6 +172,15 @@
   }
   .btn-row { display: flex; gap: 10px; }
   .btn-row .btn-secondary { flex: 1; }
+  .btn-skip {
+    position: fixed; bottom: 24px; right: 20px;
+    background: var(--surface); color: var(--text);
+    border: 2px solid var(--border); border-radius: 16px;
+    padding: 16px 24px; font-size: 17px; font-weight: 700;
+    cursor: pointer; z-index: 100;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+  .btn-skip:active { opacity: 0.7; }
 
   .auto-hint {
     font-size: 13px; color: var(--muted); text-align: center; line-height: 1.5;
@@ -176,7 +201,7 @@
   <div class="emergency-badge">Vészhelyzet protokoll</div>
   <h1>A baba nem<br><span>lélegzik?</span></h1>
   <p>Tedd magad mellé a telefont. Az app <strong>felolvassa</strong> mit kell tenned, és <strong>hangosan számol</strong> az ütemmel. Te a babával foglalkozz.</p>
-  <button class="btn-start" onclick="startApp()">▶ INDÍTÁS – HANGOS VEZETÉS</button>
+  <button class="btn-start" onclick="startApp()">INDÍTÁS – HANGOS INSTRUKCIÓKKAL</button>
   <div class="call-hint">
     <div style="font-size:28px;">📞</div>
     <div>
@@ -193,12 +218,15 @@
   <div class="guide-header">
     <div class="guide-step-num" id="stepNum">1 / 7</div>
     <div class="header-btns">
-      <button class="btn-mute" id="muteBtn" onclick="toggleMute()">🔊</button>
+      <button class="btn-mute" id="muteBtn" onclick="toggleMute()" title="Elhalkítás">🔊</button>
+      <button class="btn-repeat-top" onclick="repeatStep()" title="Újra">↺ Újra</button>
+      <button class="btn-pause" id="pauseBtn" onclick="togglePause()" title="Szünet">⏸ Szünet</button>
       <a href="tel:104" class="btn-call">📞 104</a>
     </div>
   </div>
   <div class="guide-main" id="guideMain"></div>
   <div class="guide-actions" id="guideActions"></div>
+  <button class="btn-skip" id="skipBtn" onclick="skipStep()">Kihagyás →</button>
 </div>
 
 <script>
@@ -206,6 +234,7 @@
 // SPEECH (Text to Speech)
 // ════════════════════════════════════════════════
 let muted = false;
+let paused = false;
 let huVoice = null;
 
 function loadVoice() {
@@ -218,7 +247,7 @@ if (window.speechSynthesis) {
 }
 
 function speak(text, rate, cb) {
-  if (muted || !window.speechSynthesis) { if (cb) cb(); return; }
+  if (muted || paused || !window.speechSynthesis) { if (cb) cb(); return; }
   try {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
@@ -233,7 +262,7 @@ function speak(text, rate, cb) {
 
 // Quick speak that does NOT cancel ongoing (for counting numbers over beats)
 function speakNum(text) {
-  if (muted || !window.speechSynthesis) return;
+  if (muted || paused || !window.speechSynthesis) return;
   try {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'hu-HU';
@@ -247,6 +276,29 @@ function toggleMute() {
   muted = !muted;
   document.getElementById('muteBtn').textContent = muted ? '🔇' : '🔊';
   if (muted && window.speechSynthesis) speechSynthesis.cancel();
+}
+
+function togglePause() {
+  paused = !paused;
+  const btn = document.getElementById('pauseBtn');
+  if (paused) {
+    // Pause everything
+    if (window.speechSynthesis) speechSynthesis.cancel();
+    breathCueRunning = false;
+    activeTimers.forEach(t => { clearTimeout(t); clearInterval(t); });
+    activeTimers = [];
+    btn.textContent = '▶ Folytatás';
+    btn.classList.add('paused');
+  } else {
+    // Resume – re-render current step or loop
+    btn.textContent = '⏸ Szünet';
+    btn.classList.remove('paused');
+    if (currentStep >= TOTAL_STEPS - 1) {
+      runLoopCycle();
+    } else {
+      renderStep();
+    }
+  }
 }
 
 // ════════════════════════════════════════════════
@@ -279,15 +331,17 @@ function vibrate(ms) { if (navigator.vibrate) navigator.vibrate(ms); }
 // ════════════════════════════════════════════════
 let currentStep = 0;
 let activeTimers = [];
+let breathCueRunning = false;
 
 function clearTimers() {
   activeTimers.forEach(t => { clearTimeout(t); clearInterval(t); });
   activeTimers = [];
+  breathCueRunning = false;
   if (window.speechSynthesis) speechSynthesis.cancel();
 }
 function later(fn, ms) { const t = setTimeout(fn, ms); activeTimers.push(t); return t; }
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
 
 function startApp() {
   getAudioCtx(); // unlock audio
@@ -318,12 +372,12 @@ function renderStep() {
       setProgress(1);
       main.innerHTML = `
         <div class="big-emoji check">👁️</div>
-        <div class="guide-title">Reagál a baba?</div>
-        <div class="guide-text">Szólítsd meg <strong>hangosan</strong> és <strong>csipd meg a talpát</strong>. <span class="hl">Ne rázd meg!</span></div>`;
+        <div class="guide-title">Nézd meg reagál-e<br>a baba!</div>
+        <div class="guide-text"><span class="hl">Nem szabad megrázni!</span> Szólítsd meg <strong>hangosan</strong>, <strong>nyomogasd a vállát</strong> és <strong>csipd meg a talpát</strong>.</div>`;
       actions.innerHTML = `
         <button class="btn-primary" onclick="nextStep()">Nem reagál →</button>
-        <div class="auto-hint">Ha reagál és lélegzik, fordítsd az oldalára</div>`;
-      speak('Reagál a baba? Szólítsd meg hangosan, és csipd meg a talpát. Ne rázd meg. Ha nem reagál, nyomd meg a gombot.', 1.0);
+        <div class="auto-hint" style="font-size:16px; color: var(--text);">Ha reagál és lélegzik, fordítsd az oldalára</div>`;
+      speak('Nem szabad megrázni a babát! ... Szólítsd meg hangosan. ... Nyomogasd a vállát. ... Csipd meg a talpát. ... Ha nem reagál, nyomd meg a gombot.', 1.0);
       break;
 
     // ── 2. POSITION + CALL ──
@@ -336,7 +390,7 @@ function renderStep() {
       actions.innerHTML = `
         <a href="tel:104" class="btn-primary" style="text-decoration:none;display:block;text-align:center">📞 MENTŐK HÍVÁSA – 104</a>
         <button class="btn-secondary" onclick="nextStep()">Kész, tovább →</button>`;
-      speak('Fektesd a babát hanyatt egy kemény felületre. Hívd a száznégyet, és tedd hangosbeszélőre. Aztán nyomd meg a tovább gombot.', 1.0);
+      speak('Fektesd a babát hanyatt ... egy kemény felületre. ... Hívd a száznégyet, ... és tedd hangosbeszélőre. ... Aztán nyomd meg a tovább gombot.', 1.0);
       break;
 
     // ── 3. LOOK / LISTEN 10s ──
@@ -346,14 +400,15 @@ function renderStep() {
         <div class="big-emoji check">👂</div>
         <div class="guide-title">Nézd és hallgasd<br>10 másodpercig</div>
         <div class="countdown-num" id="cd">10</div>
-        <div class="guide-text">Mozog a mellkas? Hallasz légzést? Érzed a levegőt az arcán?</div>`;
-      actions.innerHTML = `<div class="auto-hint">⏳ Automatikusan tovább 10 mp múlva…</div>`;
-      speak('Hajolj a baba fölé. Nézd a mellkasát, hallgasd a légzését tíz másodpercig. Számolok.', 1.0, () => {
+        <div class="guide-text">Tedd közel a <strong>füled az orrához</strong> · hallgasd a légzést · nézd a mellkasát · érzed-e az arcadon a levegőt?</div>`;
+      actions.innerHTML = `
+        <button class="btn-secondary" onclick="clearTimers(); nextStep()">Tovább →</button>`;
+      speak('Hajolj a baba fölé. ... Tedd közel a füled az orrához. ... Hallgasd, hogy lélegzik-e. ... Nézd, hogy emelkedik-e a mellkasa. ... Érzed-e az arcodon a légzését.', 1.0);
+      later(() => {
         runCountdown(10, 'cd', () => {
           speak('Ha nem lélegzik, folytasd.', 1.0, () => later(nextStep, 600));
         });
-      });
-      // Fallback: if speech disabled, run countdown anyway
+      }, 3500);
       if (muted || !window.speechSynthesis) later(() => runCountdown(10, 'cd', () => later(nextStep, 600)), 500);
       break;
 
@@ -362,51 +417,65 @@ function renderStep() {
       setProgress(4);
       main.innerHTML = `
         <div class="big-emoji check">👄</div>
-        <div class="guide-title">Nézz a szájba</div>
-        <div class="guide-text">Ha <strong>látsz idegen testet</strong>, töröld ki egy ujjal, <strong>ruhával</strong> – <span class="hl">ne papírzsebkendővel!</span> Ha nem látsz semmit, ne nyúlj bele.</div>`;
+        <div class="guide-title">Nézz bele a szájába</div>
+        <div class="guide-text">Ha <strong>látsz idegen testet</strong>, töröld ki egy ujjal, <strong>ruhával</strong> – <span class="hl">ne papírzsebkendővel, mert az szakad és málik!</span> Ha nem látsz semmit, ne nyúlj bele.</div>`;
       actions.innerHTML = `<button class="btn-primary" onclick="nextStep()">Szabad a légút →</button>`;
-      speak('Nézz bele a baba szájába. Ha látsz idegen testet, töröld ki egy ujjal, ruhával. Ne papírzsebkendőt használj. Ha nem látsz semmit, ne nyúlj bele. Aztán nyomd meg a gombot.', 1.0);
+      speak('Nézz bele a baba szájába. ... Ha látsz idegen testet, ... töröld ki egy ujjal, ruhával. ... Ne papírzsebkendőt használj, ... mert az szakad és málik. ... Ha nem látsz semmit, ne nyúlj bele.', 1.0, () => {
+        later(nextStep, 3000);
+      });
+      if (muted || !window.speechSynthesis) later(nextStep, 5000);
       break;
 
-    // ── 5. INITIAL 5 BREATHS ──
+    // ── 4b. UNDRESS CHEST ──
     case 4:
       setProgress(5);
       main.innerHTML = `
+        <div class="big-emoji">👕</div>
+        <div class="guide-title">Vetkőztesd le<br>a felsőtestét!</div>
+        <div class="guide-text">Tedd <strong>szabaddá a mellkasát</strong> – vedd le vagy húzd fel a ruháját.</div>`;
+      actions.innerHTML = `<button class="btn-primary" onclick="nextStep()">Szabad a mellkas →</button>`;
+      speak('Vetkőztesd le a baba felsőtestét. ... Tedd szabaddá a mellkasát.', 1.0, () => {
+        later(nextStep, 4000);
+      });
+      if (muted || !window.speechSynthesis) later(nextStep, 6000);
+      break;
+
+    // ── 5. INITIAL 5 BREATHS ──
+    case 5:
+      setProgress(6);
+      main.innerHTML = `
         <div class="beat-ring breath-ring" id="breathRing">
-          <div class="live-count" id="breathCount" style="font-size:90px">0</div>
-          <div class="live-sub">/ 5 befúvás</div>
+          <div style="font-size:56px">🫁</div>
         </div>
         <div class="guide-title" style="font-size:22px">5 kezdő befúvás</div>
-        <div class="guide-text">Fedd le a <strong>száját és orrát</strong> egyszerre. Fújj be, amíg a mellkas <strong>megemelkedik</strong>.</div>`;
-      actions.innerHTML = `<div class="auto-hint">🫁 Kövesd a hangot – fújj a jelzésre</div>`;
-      speak('Most öt befúvás következik. Tedd a fej enyhén hátra. Fedd le a baba száját és orrát a száddal. Fújj be, amikor mondom.', 1.0, () => {
-        runBreaths(5, () => {
-          speak('Most jön a mellkaskompresszió.', 1.0, () => later(nextStep, 700));
-        });
+        <div class="guide-text">Kapd be a <strong>száját és orrát</strong> egyszerre. Fújj be <strong>hosszan</strong> – figyeld, hogy a mellkas <strong>megemelkedik-e</strong>. Ismételd ötször.</div>`;
+      actions.innerHTML = `<div class="auto-hint">🫁 Automatikusan folytatódik</div>`;
+      speak('Most öt befúvás következik. ... Hajtsd a fejét enyhén hátra. ... Kapd be a baba száját és orrát a száddal egyszerre. ... Fújj be hosszan. ... Figyeld, emelkedik a mellkasa?', 1.0, () => {
+        runBreathCue5(() => later(nextStep, 600));
       });
-      if (muted || !window.speechSynthesis) later(() => runBreaths(5, () => later(nextStep, 700)), 500);
+      if (muted || !window.speechSynthesis) later(() => runBreathCue5(() => later(nextStep, 600)), 500);
       break;
 
     // ── 6. FIRST 30 COMPRESSIONS ──
-    case 5:
-      setProgress(6);
+    case 6:
+      setProgress(7);
       main.innerHTML = `
         <div class="beat-ring" id="beatRing">
           <div class="live-count" id="compCount">0</div>
           <div class="live-sub">/ 30</div>
         </div>
         <div class="guide-title" style="font-size:22px">30 mellkaskompresszió</div>
-        <div class="guide-text"><strong>2 hüvelykujj</strong> a mellbimbók vonala alatt, a hátat 4‑4 ujjal tartva. Nyomd <strong>120-as ütemre</strong>.</div>`;
+        <div class="guide-text">A két <strong>hüvelykujjad</strong> a mellbimbók vonala alá, középre. A baba hátát <strong>4-4 ujjal fogd</strong>. Nyomd erősen, préselődnie kell a vérnek. Figyeld a ritmust: <strong>másodpercenként kétszer nyomj</strong> – számolunk.</div>`;
       actions.innerHTML = `<div class="auto-hint">🤲 Nyomd a kattanás ütemére</div>`;
-      speak('Tedd a két hüvelykujjad a mellbimbókat összekötő vonal alá. Nyomd a mellkast az ütemre. Számolok.', 1.0, () => {
+      speak('A két hüvelykujjadat tedd a mellbimbókat összekötő vonal alá, középre. ... A baba hátát fogd négy-négy ujjaddal. ... Nyomd erősen, ... préselődnie kell a vérnek. ... Figyeld a ritmust: ... másodpercenként kétszer nyomj.', 1.0, () => {
         runCompressions(30, () => later(nextStep, 400));
       });
       if (muted || !window.speechSynthesis) later(() => runCompressions(30, () => later(nextStep, 400)), 500);
       break;
 
     // ── 7. CONTINUOUS LOOP: 2 breaths + 30 compressions ──
-    case 6:
-      setProgress(7);
+    case 7:
+      setProgress(8);
       runLoopCycle();
       break;
   }
@@ -417,13 +486,40 @@ function nextStep() {
   if (currentStep < TOTAL_STEPS - 1) { currentStep++; renderStep(); }
 }
 
+function skipStep() {
+  clearTimers();
+  breathCueRunning = false;
+  if (currentStep >= TOTAL_STEPS - 1) {
+    // In loop: skip to next phase
+    if (loopPhase === 'breath') {
+      loopCompressionsPhase();
+    } else {
+      runLoopCycle();
+    }
+  } else {
+    currentStep++;
+    renderStep();
+  }
+}
+
+function repeatStep() {
+  clearTimers();
+  breathCueRunning = false;
+  if (currentStep >= TOTAL_STEPS - 1) {
+    loopCycleNum = Math.max(0, loopCycleNum - 1);
+    runLoopCycle();
+  } else {
+    renderStep();
+  }
+}
+
 function prevStep() {
   clearTimers();
   if (currentStep > 0) { currentStep--; renderStep(); }
 }
 
 // ════════════════════════════════════════════════
-// COUNTDOWN (look/listen)
+// COUNTDOWN (look/listen) – speaks every number
 // ════════════════════════════════════════════════
 function runCountdown(from, elId, done) {
   let n = from;
@@ -438,6 +534,65 @@ function runCountdown(from, elId, done) {
   }, 1000);
   activeTimers.push(iv);
 }
+
+// Voiced countdown: speaks each number aloud
+function runCountdownVoice(from, elId, done) {
+  let n = from;
+  const el = document.getElementById(elId);
+  if (el) el.textContent = n;
+  function tick() {
+    if (n <= 0) {
+      const e = document.getElementById(elId);
+      if (e) e.textContent = '✓';
+      if (done) done();
+      return;
+    }
+    speakNum(String(n));
+    playClick();
+    const e = document.getElementById(elId);
+    if (e) e.textContent = n;
+    n--;
+    const t = later(tick, 1000);
+  }
+  tick();
+}
+
+// Breath cue loop – 2 blow signals only (for loop cycles)
+function runBreathCue() {
+  breathCueRunning = true;
+  let cueCount = 0;
+  function oneCue() {
+    if (!breathCueRunning) return;
+    if (cueCount >= 2) return;
+    cueCount++;
+    const ring = document.getElementById('breathRing');
+    if (ring) ring.classList.add('blow');
+    playBlow();
+    vibrate(900);
+    const t1 = later(() => { const r = document.getElementById('breathRing'); if (r) r.classList.remove('blow'); }, 1200);
+    if (cueCount < 2) later(oneCue, 2800);
+  }
+  oneCue();
+}
+
+// 5 breath cues for initial sequence, then calls done
+function runBreathCue5(done) {
+  breathCueRunning = true;
+  let cueCount = 0;
+  function oneCue() {
+    if (!breathCueRunning) { if (done) done(); return; }
+    if (cueCount >= 5) { if (done) done(); return; }
+    cueCount++;
+    const ring = document.getElementById('breathRing');
+    if (ring) ring.classList.add('blow');
+    playBlow();
+    vibrate(900);
+    later(() => { const r = document.getElementById('breathRing'); if (r) r.classList.remove('blow'); }, 1200);
+    later(oneCue, 2800);
+  }
+  oneCue();
+}
+
 
 // ════════════════════════════════════════════════
 // BREATHS (timed, with voice cue + blow sound)
@@ -494,7 +649,6 @@ function runCompressions(total, done) {
     if (ring) { ring.classList.add('pulse'); setTimeout(() => ring && ring.classList.remove('pulse'), 120); }
     playClick();
     vibrate(50);
-    // Speak count every 5 to avoid overlap, or final
     if (count % 5 === 0 || count === total) speakNum(String(count));
     if (count >= total) { clearInterval(iv); if (done) done(); }
   }, 500); // 120 BPM
@@ -505,40 +659,81 @@ function runCompressions(total, done) {
 // CONTINUOUS LOOP
 // ════════════════════════════════════════════════
 let loopCycleNum = 0;
+let encourageIdx = 0;
+let loopPhase = 'breath'; // 'breath' | 'compress'
+
+function getBreathReminder() {
+  // Alternate between two breath reminders each cycle
+  if (loopCycleNum % 2 === 0) {
+    return 'Kapd be a baba orrát és száját egyszerre. ... Fújj be hosszan. ... Ha emelkedik a mellkas, jó helyen vagy.';
+  } else {
+    return 'Szájon és orron egyszerre fújj. ... Nézd hogy a mellkas emelkedik-e.';
+  }
+}
+
+function getCompressReminder() {
+  // Every 5th cycle: mentő reminder
+  if (loopCycleNum % 5 === 0) {
+    return 'A mentők úton vannak. ... Kitartás, jól csinálod!';
+  }
+  // Every 9th cycle: csere reminder
+  if (loopCycleNum % 9 === 0) {
+    return 'Ha elfáradsz és van mellette valaki, ... cseréljetek. ... Az ajtót is nyissátok ki a mentőknek.';
+  }
+  // Every cycle: technique reminder, alternating
+  if (loopCycleNum % 2 === 0) {
+    return 'A két hüvelykujj a mellbimbókat összekötő vonal alá, középre. ... A többi ujjal fogd a hátát, és erősen préselj.';
+  } else {
+    return 'Ne aggódj a bordák miatt. ... A legfontosabb hogy a vér áramoljon. ... Erősen nyomj.';
+  }
+}
 
 function runLoopCycle() {
   loopCycleNum++;
+  loopPhase = 'breath';
   const main = document.getElementById('guideMain');
   const actions = document.getElementById('guideActions');
 
-  // Phase A: 2 breaths
   main.innerHTML = `
     <div class="repeat-banner">🔁 ${loopCycleNum}. ciklus · folytasd amíg a mentő megérkezik</div>
     <div class="beat-ring breath-ring" id="breathRing">
-      <div class="live-count" id="breathCount" style="font-size:90px">0</div>
-      <div class="live-sub">/ 2 befúvás</div>
+      <div style="font-size:56px">🫁</div>
     </div>
     <div class="guide-title" style="font-size:22px">2 befúvás</div>
-    <div class="guide-text">Fedd le a száját és orrát, fújj be amíg a mellkas emelkedik.</div>`;
-  actions.innerHTML = `
-    <div class="auto-hint">🔊 Az app vezet · tartsd nyitva az ajtót!</div>
-    <button class="btn-secondary" onclick="skipToCompressions()">Ugrás a kompresszióhoz →</button>`;
+    <div class="guide-text">Kapd be a száját és orrát, fújj be <strong>hosszan</strong> – figyeld hogy a mellkas emelkedik.</div>`;
+  actions.innerHTML = `<div class="auto-hint">🫁 2 befúvás · automatikusan folytatódik</div>`;
 
-  speak(loopCycleNum === 1 ? 'Kezdődik az ismétlés. Két befúvás.' : 'Két befúvás.', 1.0, () => {
-    runBreaths(2, () => {
-      loopCompressionsPhase();
-    });
-  });
-  if (muted || !window.speechSynthesis) later(() => runBreaths(2, loopCompressionsPhase), 500);
+  // 2 breath cues with 3s initial wait, then auto-advance after 10s
+  later(runBreathCue, 3000);
+
+  if (loopCycleNum === 1) {
+    speak('Kezdődik az ismétlés. 2 befúvás.', 1.1);
+  } else if (loopCycleNum % 9 === 0) {
+    speak('2 befúvás. Ha elfáradsz, cseréljetek.', 1.1);
+  } else if (loopCycleNum % 5 === 0) {
+    speak('2 befúvás. Kitartás, a mentők úton vannak.', 1.1);
+  } else if (loopCycleNum % 2 === 0) {
+    speak('2 befúvás. Szájon és orron egyszerre.', 1.1);
+  } else {
+    speak('2 befúvás.', 1.1);
+  }
+
+  // Auto-advance after 10s
+  later(() => {
+    breathCueRunning = false;
+    loopCompressionsPhase();
+  }, 10000);
 }
 
 function skipToCompressions() {
+  breathCueRunning = false;
   clearTimers();
   loopCompressionsPhase();
 }
 
 function loopCompressionsPhase() {
   clearTimers();
+  loopPhase = 'compress';
   const main = document.getElementById('guideMain');
   const actions = document.getElementById('guideActions');
 
@@ -549,16 +744,38 @@ function loopCompressionsPhase() {
       <div class="live-sub">/ 30</div>
     </div>
     <div class="guide-title" style="font-size:22px">30 mellkaskompresszió</div>
-    <div class="guide-text">2 hüvelykujj, 120-as ütem. Nyomd a kattanásra.</div>`;
-  actions.innerHTML = `
-    <div class="auto-hint">🤲 Az app számol · ne állj meg!</div>`;
+    <div class="guide-text">A két <strong>hüvelykujjad</strong> a mellbimbók vonala alá, középre. A baba hátát <strong>4-4 ujjal fogd</strong>. Nyomd erősen, préselődnie kell a vérnek. <strong>Másodpercenként kétszer</strong> – számolunk.</div>`;
+  actions.innerHTML = `<div class="auto-hint">🤲 Az app számol · ne állj meg!</div>`;
 
-  speak('Harminc nyomás.', 1.0, () => {
-    runCompressions(30, () => {
-      speak('Most két befúvás.', 1.0, () => later(runLoopCycle, 500));
+  speak('Ismét 30 mellkaskompresszió.', 1.1);
+
+  // 3s delay before compressions start – time to get back into position
+  later(() => {
+    runCompressionsLoop(30, () => {
+      later(runLoopCycle, 400);
     });
-  });
-  if (muted || !window.speechSynthesis) later(() => runCompressions(30, () => later(runLoopCycle, 500)), 500);
+  }, 3000);
+
+  if (loopCycleNum % 2 !== 0 && loopCycleNum % 5 !== 0) {
+    later(() => speak('Erősen préselj.', 1.1), 11000);
+  }
+}
+
+// Loop-specific compression: skip 5 and 10, speak from 15 onwards at every 5
+function runCompressionsLoop(total, done) {
+  let count = 0;
+  const ring = document.getElementById('beatRing');
+  const cnt = document.getElementById('compCount');
+  const iv = setInterval(() => {
+    count++;
+    if (cnt) { cnt.textContent = count; cnt.classList.remove('flash'); void cnt.offsetWidth; cnt.classList.add('flash'); }
+    if (ring) { ring.classList.add('pulse'); setTimeout(() => ring && ring.classList.remove('pulse'), 120); }
+    playClick();
+    vibrate(50);
+    if (count >= 15 && count % 5 === 0) speakNum(String(count));
+    if (count >= total) { clearInterval(iv); if (done) done(); }
+  }, 500);
+  activeTimers.push(iv);
 }
 </script>
 
