@@ -1,4 +1,4 @@
-const CACHE = 'baba-cpr-v1';
+const CACHE = 'baba-cpr-v2';
 const ASSETS = [
   './index.html',
   './manifest.json',
