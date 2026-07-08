@@ -234,7 +234,26 @@ let paused = false;
 let huVoice = null;
 let currentAudio = null;
 
-// MP3 kulcs → fájlnév mapping
+// MP3 cache – előtöltve induláskor
+const audioCache = {};
+
+const AUDIO_KEYS = [
+  's1_check','s2_position','s3_listen','s3_result','s4_mouth',
+  's4b_undress','s5_breaths','s6_compress',
+  'loop_breath_1','loop_breath_n','loop_breath_swap',
+  'loop_breath_mentok','loop_breath_technika',
+  'loop_compress','loop_erot'
+];
+
+function preloadAudio() {
+  AUDIO_KEYS.forEach(key => {
+    const a = new Audio('audio/' + key + '.mp3');
+    a.preload = 'auto';
+    a.load();
+    audioCache[key] = a;
+  });
+}
+
 const AUDIO_MAP = {
   'Nem szabad megrázni a babát! ... Szólítsd meg hangosan. ... Nyomogasd a vállát. ... Csipd meg a talpát. ... Ha nem reagál, nyomd meg a gombot.': 's1_check',
   'Fektesd a babát hanyatt ... egy kemény felületre. ... Hívd a száznégyet, ... és tedd hangosbeszélőre. ... Aztán nyomd meg a tovább gombot.': 's2_position',
@@ -253,29 +272,45 @@ const AUDIO_MAP = {
   'Erősen préselj.': 'loop_erot',
 };
 
-const NUM_MAP = {
-  'Öt.': 'n5', 'Tíz.': 'n10', 'Tizenöt.': 'n15',
-  'Húsz.': 'n20', 'Huszonöt.': 'n25', 'Harminc.': 'n30',
-  '5': 'n5', '10': 'n10', '15': 'n15',
-  '20': 'n20', '25': 'n25', '30': 'n30',
-};
-
 function playMp3(key, cb) {
   if (muted || paused) { if (cb) cb(); return; }
-  if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+  if (currentAudio) { try { currentAudio.pause(); } catch(e) {} currentAudio = null; }
+
+  // Mindig új Audio objektum – a cache-elt nem játszható le újra megbízhatóan
   const audio = new Audio('audio/' + key + '.mp3');
+  audio.preload = 'auto';
   currentAudio = audio;
-  audio.onended = () => { currentAudio = null; if (cb) cb(); };
-  audio.onerror = () => { currentAudio = null; if (cb) cb(); };
-  audio.play().catch(() => { if (cb) cb(); });
+
+  const onEnd = () => { currentAudio = null; if (cb) cb(); };
+  const onErr = () => { currentAudio = null; speakTTSByKey(key, cb); };
+
+  audio.addEventListener('ended', onEnd, { once: true });
+  audio.addEventListener('error', onErr, { once: true });
+
+  const p = audio.play();
+  if (p && typeof p.then === 'function') {
+    p.then(() => {}).catch(() => { onErr(); });
+  }
+}
+
+// TTS fallback kulcs alapján (nem kell a teljes szöveg)
+const KEY_TO_TEXT = {};
+Object.entries(AUDIO_MAP).forEach(([text, key]) => { KEY_TO_TEXT[key] = text; });
+
+function speakTTSByKey(key, cb) {
+  const text = KEY_TO_TEXT[key] || key;
+  speakTTS(text, 1.0, cb);
 }
 
 function speak(text, rate, cb) {
   if (muted || paused) { if (cb) cb(); return; }
-  const clean = text.replace(/ \.\.\. /g, ' ').replace(/\.\.\./g, '').trim();
   const key = AUDIO_MAP[text];
   if (key) { playMp3(key, cb); return; }
-  // Fallback: Web Speech API
+  speakTTS(text, rate, cb);
+}
+
+function speakTTS(text, rate, cb) {
+  const clean = text.replace(/ \.\.\. /g, ' ').replace(/\.\.\./g, '').trim();
   if (!window.speechSynthesis) { if (cb) cb(); return; }
   try {
     speechSynthesis.cancel();
@@ -289,16 +324,12 @@ function speak(text, rate, cb) {
 }
 
 function speakNum(text) {
-  if (muted || paused) return;
-  const key = NUM_MAP[text];
-  if (key) { playMp3(key); return; }
-  // Fallback
-  if (!window.speechSynthesis) return;
+  if (muted || paused || !window.speechSynthesis) return;
   try {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = 'hu-HU';
     if (huVoice) u.voice = huVoice;
-    u.rate = 1.2;
+    u.rate = 1.3;
     speechSynthesis.speak(u);
   } catch(e) {}
 }
@@ -387,8 +418,8 @@ function later(fn, ms) { const t = setTimeout(fn, ms); activeTimers.push(t); ret
 const TOTAL_STEPS = 8;
 
 function startApp() {
-  getAudioCtx(); // unlock audio
-  speak(' '); // unlock speech on iOS
+  getAudioCtx(); // unlock audio context
+  preloadAudio(); // előtölt minden MP3-at user gesture-n belül
   document.getElementById('startScreen').style.display = 'none';
   document.getElementById('guideScreen').style.display = 'flex';
   currentStep = 0;
