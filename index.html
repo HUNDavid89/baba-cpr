@@ -217,7 +217,7 @@
       <button class="btn-mute" id="muteBtn" onclick="toggleMute()" title="Elhalkítás">🔊</button>
       <button class="btn-repeat-top" onclick="repeatStep()" title="Újra">↺</button>
       <button class="btn-skip-top" onclick="skipStep()">Kihagy</button>
-      <button class="btn-pause" id="pauseBtn" onclick="togglePause()" title="Szünet">⏸ Szünet</button>
+      <button class="btn-pause" id="pauseBtn" onclick="togglePause()" title="Szünet">⏸</button>
       <a href="tel:104" class="btn-call">📞 104</a>
     </div>
   </div>
@@ -361,11 +361,11 @@ function togglePause() {
     breathCueRunning = false;
     activeTimers.forEach(t => { clearTimeout(t); clearInterval(t); });
     activeTimers = [];
-    btn.textContent = '▶ Folytatás';
+    btn.textContent = '▶';
     btn.classList.add('paused');
   } else {
     // Resume – re-render current step or loop
-    btn.textContent = '⏸ Szünet';
+    btn.textContent = '⏸';
     btn.classList.remove('paused');
     if (currentStep >= TOTAL_STEPS - 1) {
       runLoopCycle();
