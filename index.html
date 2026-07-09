@@ -198,8 +198,6 @@
   <h1>A baba nem<br><span>lélegzik?</span></h1>
   <p>Tedd magad mellé a telefont. Az app <strong>felolvassa</strong> mit kell tenned, és <strong>hangosan számol</strong> az ütemmel. Te a babával foglalkozz.</p>
   <button class="btn-start" onclick="startApp()">INDÍTÁS – HANGOS INSTRUKCIÓKKAL</button>
-  <button onclick="testAudio()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:12px 20px;font-size:14px;cursor:pointer;">🔊 Hang teszt</button>
-  <div id="testResult" style="font-size:13px;color:var(--muted);min-height:18px;text-align:center;"></div>
   <div class="call-hint">
     <div style="font-size:28px;">📞</div>
     <div>
@@ -207,7 +205,7 @@
       <p>Hívd amint tudod</p>
     </div>
   </div>
-  <div class="audio-note">🔊 Kapcsold fel a hangerőt!</div>
+  <div class="audio-note" style="font-size:17px; font-weight:700; color:var(--amber); text-align:center; line-height:1.4;">🔊 Hangosítsd fel a telefonod és kapcsold ki a néma módot!</div>
 </div>
 
 <!-- GUIDE -->
@@ -242,7 +240,7 @@ let currentSource = null;   // fő narráció source
 let audioReady = false;
 
 const AUDIO_KEYS = [
-  's1_check','s2_position','s3_listen','s3_result','s4_mouth',
+  's1_check','s2_position','s2_pause_tip','s3_listen','s3_result','s4_mouth',
   's4b_undress','s5_breaths','s6_compress',
   'loop_breath_1','loop_breath_n','loop_breath_swap',
   'loop_breath_mentok','loop_breath_technika',
@@ -275,6 +273,7 @@ async function preloadAudio() {
 const AUDIO_MAP = {
   'Nézd meg reagál-e a baba! ... Nem szabad megrázni! ... Szólítsd meg hangosan. ... Nyomogasd a vállát. ... Csípd meg a talpát. ... Ha nem reagál, nyomd meg a gombot.': 's1_check',
   'Fektesd a babát hanyatt ... egy kemény felületre. ... Hívd a száznégyet, ... és tedd hangosbeszélőre. ... Aztán nyomd meg a tovább gombot.': 's2_position',
+  'Ha a mentőkkel beszélsz, ... jobb felül bármikor szüneteltetheted az instrukciókat.': 's2_pause_tip',
   'Hajolj a baba fölé. ... Tedd közel a füled az orrához. ... Hallgasd, hogy lélegzik-e. ... Nézd, hogy emelkedik-e a mellkasa. ... Érzed-e az arcodon a légzését.': 's3_listen',
   'Ha nem lélegzik, folytasd.': 's3_result',
   'Nézz bele a baba szájába. ... Ha látsz idegen testet, ... töröld ki egy ujjal, ruhával. ... Ne papírzsebkendőt használj, ... mert az szakad és málik. ... Ha nem látsz semmit, ne nyúlj bele.': 's4_mouth',
@@ -566,11 +565,14 @@ function renderStep() {
       main.innerHTML = `
         <div class="big-emoji">📍</div>
         <div class="guide-title">Fektesd kemény<br>felületre + hívd a mentőt</div>
-        <div class="guide-text">Tedd a babát <strong>hanyatt</strong> a padlóra vagy asztalra. <strong>Hívd a 1‑0‑4‑et</strong> most – tedd hangosbeszélőre!</div>`;
+        <div class="guide-text">Tedd a babát <strong>hanyatt</strong> a padlóra vagy asztalra. <strong>Hívd a 1‑0‑4‑et</strong> most – tedd hangosbeszélőre!</div>
+        <div class="step-warning" style="margin-top:8px">Ha a mentőkkel beszélsz, jobb felül bármikor <strong>szüneteltetheted</strong> az instrukciókat.</div>`;
       actions.innerHTML = `
         <a href="tel:104" class="btn-primary" style="text-decoration:none;display:block;text-align:center">📞 MENTŐK HÍVÁSA – 104</a>
         <button class="btn-secondary" onclick="nextStep()">Kész, tovább →</button>`;
-      speak('Fektesd a babát hanyatt ... egy kemény felületre. ... Hívd a száznégyet, ... és tedd hangosbeszélőre. ... Aztán nyomd meg a tovább gombot.', 1.0);
+      speak('Fektesd a babát hanyatt ... egy kemény felületre. ... Hívd a száznégyet, ... és tedd hangosbeszélőre. ... Aztán nyomd meg a tovább gombot.', 1.0, () => {
+        speak('Ha a mentőkkel beszélsz, ... jobb felül bármikor szüneteltetheted az instrukciókat.', 1.0);
+      });
       break;
 
     // ── 3. LOOK / LISTEN 10s ──
