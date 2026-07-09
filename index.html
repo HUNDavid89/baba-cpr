@@ -198,6 +198,8 @@
   <h1>A baba nem<br><span>lélegzik?</span></h1>
   <p>Tedd magad mellé a telefont. Az app <strong>felolvassa</strong> mit kell tenned, és <strong>hangosan számol</strong> az ütemmel. Te a babával foglalkozz.</p>
   <button class="btn-start" onclick="startApp()">INDÍTÁS – HANGOS INSTRUKCIÓKKAL</button>
+  <button onclick="testAudio()" style="background:var(--surface2);color:var(--text);border:1px solid var(--border);border-radius:12px;padding:12px 20px;font-size:14px;cursor:pointer;">🔊 Hang teszt</button>
+  <div id="testResult" style="font-size:13px;color:var(--muted);min-height:18px;text-align:center;"></div>
   <div class="call-hint">
     <div style="font-size:28px;">📞</div>
     <div>
@@ -251,17 +253,23 @@ const AUDIO_KEYS = [
 // Fetch + decode minden MP3-at (AudioContext már fel van oldva)
 async function preloadAudio() {
   const ctx = getAudioCtx();
+  let ok = 0, fail = 0;
   await Promise.all(AUDIO_KEYS.map(async key => {
     try {
       const resp = await fetch('audio/' + key + '.mp3');
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const arr = await resp.arrayBuffer();
-      const buf = await ctx.decodeAudioData(arr);
+      const buf = await new Promise((res, rej) => {
+        ctx.decodeAudioData(arr, res, rej);
+      });
       audioBuffers[key] = buf;
+      ok++;
     } catch(e) {
-      // fájl hiányzik – TTS fallback lesz
+      fail++;
     }
   }));
   audioReady = true;
+  window.__audioStatus = 'Betöltve: ' + ok + ' / hiba: ' + fail;
 }
 
 const AUDIO_MAP = {
@@ -426,11 +434,31 @@ function togglePause() {
 // AUDIO + VIBRATION
 // ════════════════════════════════════════════════
 let audioCtx = null;
+let iosUnlocked = false;
+
 function getAudioCtx() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (audioCtx.state === 'suspended') audioCtx.resume();
   return audioCtx;
 }
+
+// iOS feloldás: néma buffer + resume, user gesture-ben hívva
+function unlockAudio() {
+  const ctx = getAudioCtx();
+  if (ctx.state === 'suspended') ctx.resume();
+  // Néma buffer lejátszása
+  try {
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+  } catch(e) {}
+  // Extra resume késleltetve (iOS néha nem oldja fel azonnal)
+  setTimeout(() => { if (ctx.state === 'suspended') ctx.resume(); }, 100);
+  iosUnlocked = true;
+}
+
 function playClick() {
   if (muted) return;
   try {
@@ -465,20 +493,40 @@ function later(fn, ms) { const t = setTimeout(fn, ms); activeTimers.push(t); ret
 
 const TOTAL_STEPS = 8;
 
-function startApp() {
-  const ctx = getAudioCtx(); // feloldás user gesture-ben
-  // Némán megpingeljük a contextet hogy biztosan feloldódjon iOS-en
+async function testAudio() {
+  const el = document.getElementById('testResult');
+  el.textContent = 'Töltés...';
+  const ctx = getAudioCtx();
   try {
     const s = ctx.createBufferSource();
     s.buffer = ctx.createBuffer(1, 1, 22050);
-    s.connect(ctx.destination);
-    s.start(0);
+    s.connect(ctx.destination); s.start(0);
   } catch(e) {}
+  try {
+    const resp = await fetch('audio/s1_check.mp3');
+    if (!resp.ok) { el.textContent = '❌ Fájl nem elérhető: HTTP ' + resp.status; return; }
+    const arr = await resp.arrayBuffer();
+    el.textContent = '✓ Letöltve (' + Math.round(arr.byteLength/1024) + ' KB), dekódolás...';
+    ctx.decodeAudioData(arr, (buf) => {
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+      el.textContent = '✓ Lejátszás! Hallanod kell a hangot.';
+    }, (err) => {
+      el.textContent = '❌ Dekódolási hiba (MP3 formátum?)';
+    });
+  } catch(e) {
+    el.textContent = '❌ Hiba: ' + e.message;
+  }
+}
+
+function startApp() {
+  unlockAudio(); // iOS feloldás user gesture-ben
 
   document.getElementById('startScreen').style.display = 'none';
   document.getElementById('guideScreen').style.display = 'flex';
 
-  // Előtöltés a háttérben; közben már indul az első lépés
   preloadAudio();
   currentStep = 0;
   renderStep();
