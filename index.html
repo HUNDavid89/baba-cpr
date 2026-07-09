@@ -227,15 +227,17 @@
 
 <script>
 // ════════════════════════════════════════════════
-// SPEECH – MP3 fájlok, fallback: Web Speech API
+// AUDIO – Web Audio API bufferek (mobilon megbízható)
+// Minden MP3 dekódolva, egy feloldott AudioContexten megy
 // ════════════════════════════════════════════════
 let muted = false;
 let paused = false;
 let huVoice = null;
-let currentAudio = null;
 
-// MP3 cache – előtöltve induláskor
-const audioCache = {};
+// Dekódolt AudioBuffer-ek
+const audioBuffers = {};
+let currentSource = null;   // fő narráció source
+let audioReady = false;
 
 const AUDIO_KEYS = [
   's1_check','s2_position','s3_listen','s3_result','s4_mouth',
@@ -246,13 +248,20 @@ const AUDIO_KEYS = [
   'n5','n10','n15','n20','n25','n30'
 ];
 
-function preloadAudio() {
-  AUDIO_KEYS.forEach(key => {
-    const a = new Audio('audio/' + key + '.mp3');
-    a.preload = 'auto';
-    a.load();
-    audioCache[key] = a;
-  });
+// Fetch + decode minden MP3-at (AudioContext már fel van oldva)
+async function preloadAudio() {
+  const ctx = getAudioCtx();
+  await Promise.all(AUDIO_KEYS.map(async key => {
+    try {
+      const resp = await fetch('audio/' + key + '.mp3');
+      const arr = await resp.arrayBuffer();
+      const buf = await ctx.decodeAudioData(arr);
+      audioBuffers[key] = buf;
+    } catch(e) {
+      // fájl hiányzik – TTS fallback lesz
+    }
+  }));
+  audioReady = true;
 }
 
 const AUDIO_MAP = {
@@ -272,41 +281,56 @@ const AUDIO_MAP = {
   'Ismét 30 mellkaskompresszió.': 'loop_compress',
   'Erősen préselj.': 'loop_erot',
 };
-
-function playMp3(key, cb) {
-  if (muted || paused) { if (cb) cb(); return; }
-  if (currentAudio) { try { currentAudio.pause(); } catch(e) {} currentAudio = null; }
-
-  // Mindig új Audio objektum – a cache-elt nem játszható le újra megbízhatóan
-  const audio = new Audio('audio/' + key + '.mp3');
-  audio.preload = 'auto';
-  currentAudio = audio;
-
-  const onEnd = () => { currentAudio = null; if (cb) cb(); };
-  const onErr = () => { currentAudio = null; speakTTSByKey(key, cb); };
-
-  audio.addEventListener('ended', onEnd, { once: true });
-  audio.addEventListener('error', onErr, { once: true });
-
-  const p = audio.play();
-  if (p && typeof p.then === 'function') {
-    p.then(() => {}).catch(() => { onErr(); });
-  }
-}
-
-// TTS fallback kulcs alapján (nem kell a teljes szöveg)
 const KEY_TO_TEXT = {};
 Object.entries(AUDIO_MAP).forEach(([text, key]) => { KEY_TO_TEXT[key] = text; });
 
-function speakTTSByKey(key, cb) {
-  const text = KEY_TO_TEXT[key] || key;
-  speakTTS(text, 1.0, cb);
+// Buffer lejátszása a fő narrációs csatornán
+function playBuffer(key, cb) {
+  if (muted || paused) { if (cb) cb(); return; }
+  const ctx = getAudioCtx();
+  const buf = audioBuffers[key];
+  if (!buf) {
+    // Ha még tölt, várunk rá kicsit; ha végleg nincs, TTS
+    if (!audioReady) {
+      let waited = 0;
+      const iv = setInterval(() => {
+        waited += 150;
+        if (audioBuffers[key]) { clearInterval(iv); playBuffer(key, cb); }
+        else if (audioReady || waited > 4000) { clearInterval(iv); speakTTS(KEY_TO_TEXT[key] || key, 1.0, cb); }
+      }, 150);
+      activeTimers.push(iv);
+      return;
+    }
+    speakTTS(KEY_TO_TEXT[key] || key, 1.0, cb);
+    return;
+  }
+
+  if (currentSource) { try { currentSource.onended = null; currentSource.stop(); } catch(e){} currentSource = null; }
+
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  currentSource = src;
+  src.onended = () => { if (currentSource === src) currentSource = null; if (cb) cb(); };
+  try { src.start(0); } catch(e) { if (cb) cb(); }
+}
+
+// Szám buffer – külön csatorna, nem szakítja a narrációt
+function playNumBuffer(key) {
+  if (muted || paused) return;
+  const ctx = getAudioCtx();
+  const buf = audioBuffers[key];
+  if (!buf) { speakNumTTS(numKeyToText(key)); return; }
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(ctx.destination);
+  try { src.start(0); } catch(e){}
 }
 
 function speak(text, rate, cb) {
   if (muted || paused) { if (cb) cb(); return; }
   const key = AUDIO_MAP[text];
-  if (key) { playMp3(key, cb); return; }
+  if (key) { playBuffer(key, cb); return; }
   speakTTS(text, rate, cb);
 }
 
@@ -324,29 +348,15 @@ function speakTTS(text, rate, cb) {
   } catch(e) { if (cb) cb(); }
 }
 
-// Számok: 5,10,15,20,25,30 → MP3, egyéb → TTS
-const NUM_TO_KEY = {
-  '5': 'n5', '10': 'n10', '15': 'n15',
-  '20': 'n20', '25': 'n25', '30': 'n30'
-};
-
-let numAudio = null;
+// Számok: 5,10,15,20,25,30 → buffer
+const NUM_TO_KEY = { '5':'n5','10':'n10','15':'n15','20':'n20','25':'n25','30':'n30' };
+const KEY_TO_NUM = { n5:'öt', n10:'tíz', n15:'tizenöt', n20:'húsz', n25:'huszonöt', n30:'harminc' };
+function numKeyToText(k){ return KEY_TO_NUM[k] || k; }
 
 function speakNum(text) {
   if (muted || paused) return;
   const key = NUM_TO_KEY[text];
-  if (key) {
-    // Külön audio csatorna a számoknak, hogy ne törölje a fő narrációt
-    try {
-      if (numAudio) { try { numAudio.pause(); } catch(e){} }
-      numAudio = new Audio('audio/' + key + '.mp3');
-      const p = numAudio.play();
-      if (p && typeof p.then === 'function') {
-        p.catch(() => speakNumTTS(text));
-      }
-    } catch(e) { speakNumTTS(text); }
-    return;
-  }
+  if (key) { playNumBuffer(key); return; }
   speakNumTTS(text);
 }
 
@@ -361,6 +371,20 @@ function speakNumTTS(text) {
   } catch(e) {}
 }
 
+function stopNarration() {
+  if (currentSource) { try { currentSource.onended = null; currentSource.stop(); } catch(e){} currentSource = null; }
+  if (window.speechSynthesis) speechSynthesis.cancel();
+}
+
+function loadVoice() {
+  const voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
+  huVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('hu')) || null;
+}
+if (window.speechSynthesis) {
+  loadVoice();
+  speechSynthesis.onvoiceschanged = loadVoice;
+}
+
 function loadVoice() {
   const voices = window.speechSynthesis ? speechSynthesis.getVoices() : [];
   huVoice = voices.find(v => v.lang && v.lang.toLowerCase().startsWith('hu')) || null;
@@ -373,18 +397,14 @@ if (window.speechSynthesis) {
 function toggleMute() {
   muted = !muted;
   document.getElementById('muteBtn').textContent = muted ? '🔇' : '🔊';
-  if (muted) {
-    if (window.speechSynthesis) speechSynthesis.cancel();
-    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
-  }
+  if (muted) stopNarration();
 }
 
 function togglePause() {
   paused = !paused;
   const btn = document.getElementById('pauseBtn');
   if (paused) {
-    if (window.speechSynthesis) speechSynthesis.cancel();
-    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+    stopNarration();
     breathCueRunning = false;
     activeTimers.forEach(t => { clearTimeout(t); clearInterval(t); });
     activeTimers = [];
@@ -408,6 +428,7 @@ function togglePause() {
 let audioCtx = null;
 function getAudioCtx() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
   return audioCtx;
 }
 function playClick() {
@@ -438,17 +459,27 @@ function clearTimers() {
   activeTimers.forEach(t => { clearTimeout(t); clearInterval(t); });
   activeTimers = [];
   breathCueRunning = false;
-  if (window.speechSynthesis) speechSynthesis.cancel();
+  stopNarration();
 }
 function later(fn, ms) { const t = setTimeout(fn, ms); activeTimers.push(t); return t; }
 
 const TOTAL_STEPS = 8;
 
 function startApp() {
-  getAudioCtx(); // unlock audio context
-  preloadAudio(); // előtölt minden MP3-at user gesture-n belül
+  const ctx = getAudioCtx(); // feloldás user gesture-ben
+  // Némán megpingeljük a contextet hogy biztosan feloldódjon iOS-en
+  try {
+    const s = ctx.createBufferSource();
+    s.buffer = ctx.createBuffer(1, 1, 22050);
+    s.connect(ctx.destination);
+    s.start(0);
+  } catch(e) {}
+
   document.getElementById('startScreen').style.display = 'none';
   document.getElementById('guideScreen').style.display = 'flex';
+
+  // Előtöltés a háttérben; közben már indul az első lépés
+  preloadAudio();
   currentStep = 0;
   renderStep();
 }
