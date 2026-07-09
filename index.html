@@ -273,7 +273,7 @@ async function preloadAudio() {
 }
 
 const AUDIO_MAP = {
-  'Nem szabad megrázni a babát! ... Szólítsd meg hangosan. ... Nyomogasd a vállát. ... Csipd meg a talpát. ... Ha nem reagál, nyomd meg a gombot.': 's1_check',
+  'Nézd meg reagál-e a baba! ... Nem szabad megrázni! ... Szólítsd meg hangosan. ... Nyomogasd a vállát. ... Csípd meg a talpát. ... Ha nem reagál, nyomd meg a gombot.': 's1_check',
   'Fektesd a babát hanyatt ... egy kemény felületre. ... Hívd a száznégyet, ... és tedd hangosbeszélőre. ... Aztán nyomd meg a tovább gombot.': 's2_position',
   'Hajolj a baba fölé. ... Tedd közel a füled az orrához. ... Hallgasd, hogy lélegzik-e. ... Nézd, hogy emelkedik-e a mellkasa. ... Érzed-e az arcodon a légzését.': 's3_listen',
   'Ha nem lélegzik, folytasd.': 's3_result',
@@ -553,11 +553,11 @@ function renderStep() {
       main.innerHTML = `
         <div class="big-emoji check">👁️</div>
         <div class="guide-title">Nézd meg reagál-e<br>a baba!</div>
-        <div class="guide-text"><span class="hl">Nem szabad megrázni!</span> Szólítsd meg <strong>hangosan</strong>, <strong>nyomogasd a vállát</strong> és <strong>csipd meg a talpát</strong>.</div>`;
+        <div class="guide-text"><span class="hl">Nem szabad megrázni!</span> Szólítsd meg <strong>hangosan</strong>, <strong>nyomogasd a vállát</strong> és <strong>csípd meg a talpát</strong>.</div>`;
       actions.innerHTML = `
         <button class="btn-primary" onclick="nextStep()">Nem reagál →</button>
         <div class="auto-hint" style="font-size:16px; color: var(--text);">Ha reagál és lélegzik, fordítsd az oldalára</div>`;
-      speak('Nem szabad megrázni a babát! ... Szólítsd meg hangosan. ... Nyomogasd a vállát. ... Csipd meg a talpát. ... Ha nem reagál, nyomd meg a gombot.', 1.0);
+      speak('Nézd meg reagál-e a baba! ... Nem szabad megrázni! ... Szólítsd meg hangosan. ... Nyomogasd a vállát. ... Csípd meg a talpát. ... Ha nem reagál, nyomd meg a gombot.', 1.0);
       break;
 
     // ── 2. POSITION + CALL ──
@@ -828,7 +828,7 @@ function runCompressions(total, done) {
     if (ring) { ring.classList.add('pulse'); setTimeout(() => ring && ring.classList.remove('pulse'), 120); }
     playClick();
     vibrate(50);
-    if (count % 5 === 0 || count === total) speakNum(String(count));
+    if ((count % 5 === 0 || count === total) && !currentSource) speakNum(String(count));
     if (count >= total) { clearInterval(iv); if (done) done(); }
   }, 500); // 120 BPM
   activeTimers.push(iv);
@@ -951,7 +951,7 @@ function runCompressionsLoop(total, done) {
     if (ring) { ring.classList.add('pulse'); setTimeout(() => ring && ring.classList.remove('pulse'), 120); }
     playClick();
     vibrate(50);
-    if (count >= 15 && count % 5 === 0) speakNum(String(count));
+    if (count % 5 === 0 && !currentSource) speakNum(String(count));
     if (count >= total) { clearInterval(iv); if (done) done(); }
   }, 500);
   activeTimers.push(iv);
